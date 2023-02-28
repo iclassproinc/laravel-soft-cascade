@@ -6,8 +6,10 @@ use Askedio\SoftCascade\Contracts\SoftCascadeable;
 use Askedio\SoftCascade\Exceptions\SoftCascadeLogicException;
 use Askedio\SoftCascade\Exceptions\SoftCascadeNonExistentRelationActionException;
 use Askedio\SoftCascade\Exceptions\SoftCascadeRestrictedException;
+use BadMethodCallException;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class SoftCascade implements SoftCascadeable
@@ -197,9 +199,9 @@ class SoftCascade implements SoftCascadeable
     {
         $relatedClass = $relation->getRelated();
         $foreignKeyUse = $relatedClass->getKeyName();
-        $baseQuery = $this->direction === 'delete'
-        ? $relatedClass::query()
-        : $relatedClass::withTrashed();
+
+        $baseQuery = $this->withTrashed($relatedClass::query());
+
         $foreignKeyIdsUse = $baseQuery->where($relation->getMorphType(), $relation->getMorphClass())
             ->whereIn($relation->getQualifiedForeignKeyName(), $foreignKeyIds)
             ->select($foreignKeyUse)
@@ -225,11 +227,8 @@ class SoftCascade implements SoftCascadeable
     protected function execute($relation, $foreignKey, $foreignKeyIds, $affectedRows)
     {
         $relationModel = $relation->getQuery()->getModel();
-        $relationModel = new $relationModel();
         if ($affectedRows > 0) {
-            if ($this->direction != 'delete') {
-                $relationModel = $relationModel->withTrashed();
-            }
+            $relationModel = $this->withTrashed($relationModel::query());
 
             $relationModel = $relationModel->whereIn($foreignKey, $foreignKeyIds)->limit($affectedRows);
 
@@ -286,11 +285,7 @@ class SoftCascade implements SoftCascadeable
     protected function affectedRows($relation, $foreignKey, $foreignKeyIds)
     {
         $relationModel = $relation->getQuery()->getModel();
-        $relationModel = new $relationModel();
-
-        if ($this->direction != 'delete') {
-            $relationModel = $relationModel->withTrashed();
-        }
+        $relationModel = $this->withTrashed($relationModel::query());
 
         return $relationModel->whereIn($foreignKey, $foreignKeyIds)->count();
     }
@@ -315,5 +310,19 @@ class SoftCascade implements SoftCascadeable
         }
 
         return $return;
+    }
+
+    protected function withTrashed(Builder $builder): Builder
+    {
+        if ($this->direction === 'delete') {
+            return $builder;
+        }
+
+        // if the Model does not use SoftDeletes, withTrashed() will be unavailable.
+        try {
+            return $builder->withTrashed();
+        } catch (BadMethodCallException) {
+            return $builder;
+        }
     }
 }
