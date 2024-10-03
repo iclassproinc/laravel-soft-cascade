@@ -23,7 +23,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Cascade over Eloquent items.
      *
-     * @param Illuminate\Database\Eloquent\Model $models
+     * @param \Illuminate\Database\Eloquent\Model $models
      * @param string                             $direction     update|delete|restore
      * @param array                              $directionData
      *
@@ -45,14 +45,14 @@ class SoftCascade implements SoftCascadeable
                 DB::connection($connectionToTransact)->rollBack();
             }
 
-            throw new SoftCascadeLogicException($e->getMessage(), null, $e);
+            throw new SoftCascadeLogicException($e->getMessage(), previous: $e);
         }
     }
 
     /**
      * Run the cascade.
      *
-     * @param Illuminate\Database\Eloquent\Model $models
+     * @param \Illuminate\Database\Eloquent\Collection<\Illuminate\Database\Eloquent\Model>|\Illuminate\Database\Eloquent\Model $models
      *
      * @return void
      */
@@ -75,15 +75,14 @@ class SoftCascade implements SoftCascadeable
                 DB::connection($model->getConnectionName())->beginTransaction();
             }
 
-            $this->relations($model, $models->pluck($model->getKeyName()));
+            $this->relations($model, $models->pluck($model->getKeyName())->toArray());
         }
     }
 
     /**
      * Iterate over the relations.
      *
-     * @param Illuminate\Database\Eloquent\Model $model
-     * @param array                              $foreignKeyIds
+     * @param \Illuminate\Database\Eloquent\Model $model
      * @param array                              $foreignKeyIds
      *
      * @return mixed
@@ -136,7 +135,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Get many to many related key ids and key use.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param string                                          $relationForeignKey
      * @param array                                           $foreignKeyIds
      *
@@ -190,7 +189,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Get morph many related key ids and key use.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param array                                           $foreignKeyIds
      *
      * @return array
@@ -217,7 +216,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Execute delete, or restore.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param string                                          $foreignKey
      * @param array                                           $foreignKeyIds
      * @param int                                             $affectedRows
@@ -240,7 +239,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Validate the relation method exists and is a type of Eloquent Relation.
      *
-     * @param Illuminate\Database\Eloquent\Model $model
+     * @param \Illuminate\Database\Eloquent\Model $model
      * @param string                             $relation
      *
      * @return void
@@ -264,7 +263,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Check if the model is enabled to cascade.
      *
-     * @param Illuminate\Database\Eloquent\Model $model
+     * @param \Illuminate\Database\Eloquent\Model $model
      *
      * @return bool
      */
@@ -276,13 +275,13 @@ class SoftCascade implements SoftCascadeable
     /**
      * Affected rows if we do execute.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param string                                          $foreignKey
      * @param array                                           $foreignKeyIds
      *
-     * @return void
+     * @return int
      */
-    protected function affectedRows($relation, $foreignKey, $foreignKeyIds)
+    protected function affectedRows($relation, $foreignKey, $foreignKeyIds): int
     {
         $relationModel = $relation->getQuery()->getModel();
         $relationModel = $this->withTrashed($relationModel::query());
