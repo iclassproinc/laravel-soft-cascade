@@ -17,6 +17,7 @@ tests/logs
 
 # Coverage output 
 build/
+.phpunit.cache
 
 # PhpStorm
 .idea

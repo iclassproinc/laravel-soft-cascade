@@ -6,6 +6,8 @@ use Askedio\SoftCascade\Contracts\SoftCascadeable;
 use Askedio\SoftCascade\Exceptions\SoftCascadeLogicException;
 use Askedio\SoftCascade\Exceptions\SoftCascadeNonExistentRelationActionException;
 use Askedio\SoftCascade\Exceptions\SoftCascadeRestrictedException;
+use BadMethodCallException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +23,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Cascade over Eloquent items.
      *
-     * @param Illuminate\Database\Eloquent\Model $models
+     * @param \Illuminate\Database\Eloquent\Model $models
      * @param string                             $direction     update|delete|restore
      * @param array                              $directionData
      *
@@ -43,14 +45,14 @@ class SoftCascade implements SoftCascadeable
                 DB::connection($connectionToTransact)->rollBack();
             }
 
-            throw new SoftCascadeLogicException($e->getMessage(), null, $e);
+            throw new SoftCascadeLogicException($e->getMessage(), previous: $e);
         }
     }
 
     /**
      * Run the cascade.
      *
-     * @param Illuminate\Database\Eloquent\Model $models
+     * @param \Illuminate\Database\Eloquent\Collection<\Illuminate\Database\Eloquent\Model>|\Illuminate\Database\Eloquent\Model $models
      *
      * @return void
      */
@@ -73,15 +75,14 @@ class SoftCascade implements SoftCascadeable
                 DB::connection($model->getConnectionName())->beginTransaction();
             }
 
-            $this->relations($model, $models->pluck($model->getKeyName()));
+            $this->relations($model, $models->pluck($model->getKeyName())->toArray());
         }
     }
 
     /**
      * Iterate over the relations.
      *
-     * @param Illuminate\Database\Eloquent\Model $model
-     * @param array                              $foreignKeyIds
+     * @param \Illuminate\Database\Eloquent\Model $model
      * @param array                              $foreignKeyIds
      *
      * @return mixed
@@ -124,7 +125,7 @@ class SoftCascade implements SoftCascadeable
             if ($action === 'restrict' && $affectedRows > 0) {
                 DB::rollBack(); //Rollback the transaction before throw exception
 
-                throw (new SoftCascadeRestrictedException())->setModel(get_class($modelRelation->getModel()), $foreignKeyUse, $foreignKeyIdsUse->toArray());
+                throw (new SoftCascadeRestrictedException())->setModel(get_class($modelRelation->getModel()), $foreignKeyUse, $foreignKeyIdsUse);
             }
 
             $this->execute($modelRelation, $foreignKeyUse, $foreignKeyIdsUse, $affectedRows);
@@ -134,7 +135,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Get many to many related key ids and key use.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param string                                          $relationForeignKey
      * @param array                                           $foreignKeyIds
      *
@@ -175,20 +176,18 @@ class SoftCascade implements SoftCascadeable
             $foreignKeyIdsUse = array_column($foreignKeyIdsUse, $foreignKeyUse);
         }
 
-        if (isset($foreignKeyIdsUse)) {
-            return [
+        return isset($foreignKeyIdsUse) ?
+            [
                 'foreignKeyIdsUse' => collect($foreignKeyIdsUse),
                 'foreignKeyUse'    => $relation->getRelated()->getKeyName(),
-            ];
-        } else {
-            return [];
-        }
+            ] :
+            [];
     }
 
     /**
      * Get morph many related key ids and key use.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param array                                           $foreignKeyIds
      *
      * @return array
@@ -197,9 +196,9 @@ class SoftCascade implements SoftCascadeable
     {
         $relatedClass = $relation->getRelated();
         $foreignKeyUse = $relatedClass->getKeyName();
-        $baseQuery = $this->direction === 'delete'
-        ? $relatedClass::query()
-        : $relatedClass::withTrashed();
+
+        $baseQuery = $this->withTrashed($relatedClass::query());
+
         $foreignKeyIdsUse = $baseQuery->where($relation->getMorphType(), $relation->getMorphClass())
             ->whereIn($relation->getQualifiedForeignKeyName(), $foreignKeyIds)
             ->select($foreignKeyUse)
@@ -215,7 +214,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Execute delete, or restore.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param string                                          $foreignKey
      * @param array                                           $foreignKeyIds
      * @param int                                             $affectedRows
@@ -225,11 +224,8 @@ class SoftCascade implements SoftCascadeable
     protected function execute($relation, $foreignKey, $foreignKeyIds, $affectedRows)
     {
         $relationModel = $relation->getQuery()->getModel();
-        $relationModel = new $relationModel();
         if ($affectedRows > 0) {
-            if ($this->direction != 'delete') {
-                $relationModel = $relationModel->withTrashed();
-            }
+            $relationModel = $this->withTrashed($relationModel::query());
 
             $relationModel = $relationModel->whereIn($foreignKey, $foreignKeyIds)->limit($affectedRows);
 
@@ -241,7 +237,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Validate the relation method exists and is a type of Eloquent Relation.
      *
-     * @param Illuminate\Database\Eloquent\Model $model
+     * @param \Illuminate\Database\Eloquent\Model $model
      * @param string                             $relation
      *
      * @return void
@@ -265,7 +261,7 @@ class SoftCascade implements SoftCascadeable
     /**
      * Check if the model is enabled to cascade.
      *
-     * @param Illuminate\Database\Eloquent\Model $model
+     * @param \Illuminate\Database\Eloquent\Model $model
      *
      * @return bool
      */
@@ -277,20 +273,16 @@ class SoftCascade implements SoftCascadeable
     /**
      * Affected rows if we do execute.
      *
-     * @param Illuminate\Database\Eloquent\Relations\Relation $relation
+     * @param \Illuminate\Database\Eloquent\Relations\Relation $relation
      * @param string                                          $foreignKey
      * @param array                                           $foreignKeyIds
      *
-     * @return void
+     * @return int
      */
-    protected function affectedRows($relation, $foreignKey, $foreignKeyIds)
+    protected function affectedRows($relation, $foreignKey, $foreignKeyIds): int
     {
         $relationModel = $relation->getQuery()->getModel();
-        $relationModel = new $relationModel();
-
-        if ($this->direction != 'delete') {
-            $relationModel = $relationModel->withTrashed();
-        }
+        $relationModel = $this->withTrashed($relationModel::query());
 
         return $relationModel->whereIn($foreignKey, $foreignKeyIds)->count();
     }
@@ -315,5 +307,19 @@ class SoftCascade implements SoftCascadeable
         }
 
         return $return;
+    }
+
+    protected function withTrashed(Builder $builder): Builder
+    {
+        if ($this->direction === 'delete') {
+            return $builder;
+        }
+
+        // if the Model does not use SoftDeletes, withTrashed() will be unavailable.
+        try {
+            return $builder->withTrashed();
+        } catch (BadMethodCallException) {
+            return $builder;
+        }
     }
 }
