@@ -125,7 +125,7 @@ class SoftCascade implements SoftCascadeable
             if ($action === 'restrict' && $affectedRows > 0) {
                 DB::rollBack(); //Rollback the transaction before throw exception
 
-                throw (new SoftCascadeRestrictedException())->setModel(get_class($modelRelation->getModel()), $foreignKeyUse, $foreignKeyIdsUse->toArray());
+                throw (new SoftCascadeRestrictedException())->setModel(get_class($modelRelation->getModel()), $foreignKeyUse, $foreignKeyIdsUse);
             }
 
             $this->execute($modelRelation, $foreignKeyUse, $foreignKeyIdsUse, $affectedRows);
@@ -176,14 +176,12 @@ class SoftCascade implements SoftCascadeable
             $foreignKeyIdsUse = array_column($foreignKeyIdsUse, $foreignKeyUse);
         }
 
-        if (isset($foreignKeyIdsUse)) {
-            return [
+        return isset($foreignKeyIdsUse) ?
+            [
                 'foreignKeyIdsUse' => collect($foreignKeyIdsUse),
                 'foreignKeyUse'    => $relation->getRelated()->getKeyName(),
-            ];
-        } else {
-            return [];
-        }
+            ] :
+            [];
     }
 
     /**
